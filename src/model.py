@@ -1,27 +1,27 @@
 from typing import List
+import torch
 
 from .decoder import Decoder as BaseDecoder
 
 class HuggingFaceModelWrapper:
-	def __init__(self, model, tokenizer):
+	def __init__(self, model):
 		self.model = model
 		self.model.eval()
-
-		self.tokenizer = tokenizer
 	
 	def infer(self, inputSeq):
 		"""
 		:param inputSeq: a (batched) sequence of tokens.
 		:return: a (batched) distribution over the vocabulary.
 		"""
-		return self.model(inputSeq, output_hidden_states=False).logits[:, -1, :]
+		with torch.no_grad():
+			return self.model(inputSeq, output_hidden_states=False).logits[:, -1, :]
 	
 class Inferencer:
 	def __init__(self, tokenizer, decoder : BaseDecoder):
 		self.tokenizer = tokenizer
 		self.decoder = decoder
 	
-	def decode(self, inputSeq : List[int], maxLen : int = 100) -> str:
+	def decode(self, inputSeq : List[int], maxLen : int = 100) -> List[int]:
 		"""
 		:param inputSeq: a (batched) sequence of tokens.
 		:return: a (batched) distribution over the vocabulary.
@@ -34,4 +34,5 @@ class Inferencer:
 		:return outputText: generated text
 		"""
 		tokens = self.tokenizer(inputText, return_tensors="pt").input_ids
-		output = self.decode(tokens, maxLen)
+		output = self.decode(tokens, maxLen)[0]
+		return self.tokenizer.decode(torch.tensor(output))
