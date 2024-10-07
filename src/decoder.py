@@ -1,8 +1,8 @@
 from collections.abc import Callable
-from typing import Any, List, Optional, override
-from numpy.typing import NDArray
-
-from utils import getMostProbableToken
+from typing import Any, List, Optional, Tuple, override
+from numpy import ndarray as NDArray
+import numpy as np
+from utils import getMostProbableToken, getTopKTokens
 
 class Decoder:
     def __init__(self):
@@ -43,7 +43,7 @@ class SimpleDecoder(Decoder):
         return self.sampler(*args, **kwargs)
 
 class BeamSearchDecoder(Decoder):
-    def __init__(self, model, beamSize : int, config : dict, samplingScheme : Optional[Callable[[NDArray], List[int]]] = None):
+    def __init__(self, model, beamSize : int, config : dict, samplingScheme : Optional[Callable] = None):
         """
         Implements the Beam Search Decoding scheme.
         @params beamSize : The size of the beam.
@@ -55,10 +55,13 @@ class BeamSearchDecoder(Decoder):
         self.model = model
         self.config = config
         self.beamSize = beamSize
+        if samplingScheme is None : 
+            samplingScheme = getTopKTokens
+
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : List[int], numTokens : int = 1 ) -> int :
+    def step(self, inputSeq : NDArray, numTokens : int = 1, *args, **kwargs ) -> List :
         """
         Takes in the input sequence and generates the
         next token.
@@ -66,11 +69,30 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-    
+        beams : List[Tuple[NDArray, float]] = [(inputSeq.copy(), 0)]
+
+        for _ in range(numTokens) :
+            newCandidates : List[Tuple[NDArray, float]] = []
+
+            for ( sequences, logProbs ) in beams :
+                distribution = self.model.infer(sequences)
+                topKIndices, topKValues = self.decode(distribution, *args, **kwargs)
+
+                for index, value in zip(topKIndices, topKValues) :
+                    newSeq = np.append(sequences.copy(), index, axis = -1)
+                    newLogProb = logProbs + np.log(value)
+                    newCandidates.append((newSeq, newLogProb))
+
+            newCandidates.sort(key = lambda x : x[1], reverse = True)
+            beams = newCandidates[:self.beamSize]
+
+        return list(beams[0][0][...,-numTokens:])
+
     @override
-    def decode(self, distribution : NDArray) -> int:
+    def decode(self, distribution : NDArray, *args, **kwargs) -> Tuple[NDArray, NDArray] :
         """
         @param distribution : The distribution from the
         model that we want to decode. Should be of the size 
         of the vocab.
         """
+        return self.sampler(distribution, k = self.beamSize, *args, **kwargs)
