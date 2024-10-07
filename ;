@@ -1,10 +1,11 @@
 from collections.abc import Callable
-from typing import Any, List, Optional, Tuple, override
+from typing import Any, List, Tuple, override
 from numpy.typing import NDArray
+import random
 
 from utils import getMostProbableToken
 
-class SimpleDecoder:
+class Decoder:
     def __init__(self, model, config, samplingScheme : Optional[Callable] = None):
         self.model = model
         self.config = config
@@ -29,19 +30,18 @@ class SimpleDecoder:
         """
         return self.sampler(*args, **kwargs)
 
-class BeamSearchDecoder:
-    def __init__(self, model, beamSize : int, config : dict, samplingScheme : Optional[Callable[[NDArray], List[int]]] = None):
+class BeamSearchDecoder(Decoder):
+    def __init__(self, model, beamSize, config):
         """
         @params beamSize : The size of the beam.
         @params config : The configuration of the model. 
                          In beam search, the config must 
                          contain the index of the EOS token.
         """
-        self.model = model
-        self.config = config
+        super().__init__(model, config)
         self.beamSize = beamSize
-        self.sampler = samplingScheme
     
+    @override
     def step(self, inputSeq : List[int], numTokens : int = 1 ) -> int :
         """
         Takes in the input sequence and generates the
@@ -52,10 +52,10 @@ class BeamSearchDecoder:
         """
         
 
-    def decode(self, distribution : NDArray) -> int:
+    @override
+    def decoder(self, distribution : NDArray) -> int:
         """
         @param distribution : The distribution from the
         model that we want to decode. Should be of the size 
         of the vocab.
         """
-
