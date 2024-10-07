@@ -3,14 +3,13 @@ warnings.filterwarnings("ignore")
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers.models.gpt2 import GPT2LMHeadModel
 
 from src.decoder import SimpleDecoder, BeamSearchDecoder
 from src.model import Inferencer, HuggingFaceModelWrapper
 
-tokenizer = AutoTokenizer.from_pretrained("gpt2")
-gpt2Model : GPT2LMHeadModel = AutoModelForCausalLM.from_pretrained("gpt2")
-modelWrapper = HuggingFaceModelWrapper(gpt2Model)
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B")
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B", load_in_4bit=True)
+modelWrapper = HuggingFaceModelWrapper(model)
 # # set model to evaluation mode
 # model.eval()
 
