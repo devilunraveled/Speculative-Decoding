@@ -18,3 +18,9 @@ def getATokenFromTopK( distribution : NDArray, k : int ) :
     topKIndices = distribution.argsort(axis=-1)[-k:]
     topKValues = distribution[topKIndices]
     return random.choices(population=topKIndices, weights=topKValues)
+
+def getTopKTokens( distribution : NDArray , k : int) :
+    """
+    Returns the top k most probable tokens.
+    """
+    return getATokenFromTopK(distribution, k)
