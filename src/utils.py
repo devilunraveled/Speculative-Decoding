@@ -29,6 +29,9 @@ def getTopKTokens( distribution : NDArray , k : int, normalize : bool = False ) 
     """
     topKIndices = distribution.argsort(axis=-1)[..., -k:]
     topKValues = np.take_along_axis(distribution, topKIndices, axis=-1)
+    # print(topKIndices.shape, topKIndices)
+    # print(distribution.shape, topKIndices)
+    # topKValues = distribution[topKIndices]
     if normalize :
         topKValues = topKValues / topKValues.sum(axis = -1, dtype = 'float32')
     

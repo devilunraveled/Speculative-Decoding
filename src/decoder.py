@@ -1,8 +1,12 @@
 from collections.abc import Callable
-from typing import Any, List, Optional, Tuple, override
+from typing import Any, List, Optional, Tuple
+from overrides import override
 from numpy import ndarray as NDArray
+from torch import Tensor
 import numpy as np
-from utils import getMostProbableToken, getTopKTokens
+import torch
+
+from src.utils import getMostProbableToken, getTopKTokens
 
 class Decoder:
     def __init__(self):
@@ -26,12 +30,17 @@ class SimpleDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq, *args, **kwargs) -> Any:
+    def step(self, inputSeq : Tensor, maxLen : int, *args, **kwargs) -> Any:
         """
         Passes the inputSeq to the model and 
         decodes the next token.
         """
-        return self.decode(self.model.infer(inputSeq), *args, **kwargs)
+        # return self.decode(self.model.infer(inputSeq), *args, **kwargs)
+        for _ in range(maxLen):
+            distribution = self.model.infer(inputSeq)
+            index = self.decode(distribution, *args, **kwargs)
+            inputSeq = torch.cat((inputSeq, index.unsqueeze(1)), dim = 1)
+        return inputSeq[..., -maxLen:]
     
     @override
     def decode(self, *args, **kwargs) -> Any :
@@ -69,18 +78,23 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-        beams : List[Tuple[NDArray, float]] = [(inputSeq.copy(), 0)]
+        inputSeq = np.array(inputSeq)
+        beams : List[Tuple[List[int], float]] = [(inputSeq.copy(), 0)]
 
         for _ in range(numTokens) :
-            newCandidates : List[Tuple[NDArray, float]] = []
+            newCandidates : List[Tuple[List[int], float]] = []
 
             for ( sequences, logProbs ) in beams :
-                distribution = self.model.infer(sequences)
-                topKIndices, topKValues = self.decode(distribution, *args, **kwargs)
+                # print(sequences)
+                distribution = self.model.infer(torch.tensor(sequences))
+                distribution = np.array(distribution)
+                topKIndices, topKValues = self.decode(distribution, *args, normalize = False, **kwargs)
 
-                for index, value in zip(topKIndices, topKValues) :
-                    newSeq = np.append(sequences.copy(), index, axis = -1)
-                    newLogProb = logProbs + np.log(value)
+                for index, value in zip(topKIndices[0], topKValues[0]) :
+                    # print(sequences, index)
+                    newSeq = np.concatenate((sequences, [[index]]), axis = -1)
+                    # print(newSeq)
+                    newLogProb = logProbs + np.log(max(value, 1e-10))
                     newCandidates.append((newSeq, newLogProb))
 
             newCandidates.sort(key = lambda x : x[1], reverse = True)
