@@ -1,12 +1,12 @@
 from collections.abc import Callable
 from typing import Any, List, Optional, Tuple
 from overrides import override
-from numpy import ndarray as NDArray
 from torch import Tensor
-import numpy as np
 import torch
 
 from src.utils import getMostProbableToken, getTopKTokens
+
+EPSILON = 1e-10
 
 class Decoder:
     def __init__(self):
@@ -36,6 +36,7 @@ class SimpleDecoder(Decoder):
         decodes the next token.
         """
         # return self.decode(self.model.infer(inputSeq), *args, **kwargs)
+        
         for _ in range(maxLen):
             distribution = self.model.infer(inputSeq)
             index = self.decode(distribution, *args, **kwargs)
@@ -70,7 +71,7 @@ class BeamSearchDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : NDArray, numTokens : int = 1, *args, **kwargs ) -> List :
+    def step(self, inputSeq : Tensor, numTokens : int = 1, *args, **kwargs ) -> List :
         """
         Takes in the input sequence and generates the
         next token.
@@ -78,35 +79,141 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-        inputSeq = np.array(inputSeq)
-        beams : List[Tuple[List[int], float]] = [(inputSeq.copy(), 0)]
+        beams : List[Tuple[Tensor, float]] = [(inputSeq.clone(), 0)]
 
         for _ in range(numTokens) :
-            newCandidates : List[Tuple[List[int], float]] = []
+            newCandidates : List[Tuple[Tensor, float]] = []
 
             for ( sequences, logProbs ) in beams :
                 # print(sequences)
                 distribution = self.model.infer(torch.tensor(sequences))
-                distribution = np.array(distribution)
                 topKIndices, topKValues = self.decode(distribution, *args, normalize = False, **kwargs)
 
                 for index, value in zip(topKIndices[0], topKValues[0]) :
                     # print(sequences, index)
-                    newSeq = np.concatenate((sequences, [[index]]), axis = -1)
+                    newSeq = torch.cat((sequences, torch.tensor([[index]])), dim=-1)
                     # print(newSeq)
-                    newLogProb = logProbs + np.log(max(value, 1e-10))
-                    newCandidates.append((newSeq, newLogProb))
+                    newLogProb = logProbs + torch.log(value+1e-10)
+                    newCandidates.append((newSeq, newLogProb.item()))
 
             newCandidates.sort(key = lambda x : x[1], reverse = True)
             beams = newCandidates[:self.beamSize]
-
+        
         return list(beams[0][0][...,-numTokens:])
 
     @override
-    def decode(self, distribution : NDArray, *args, **kwargs) -> Tuple[NDArray, NDArray] :
+    def decode(self, distribution : Tensor, *args, **kwargs) -> Tuple[Tensor, Tensor] :
         """
         @param distribution : The distribution from the
         model that we want to decode. Should be of the size 
         of the vocab.
         """
         return self.sampler(distribution, k = self.beamSize, *args, **kwargs)
+
+class SpeculativeDecoder(Decoder):
+    def __init__(self, draftModel, model, k : int, samplingScheme : Optional[Callable] = None, **kwargs):
+        super().__init__()
+        self.draftModel = draftModel
+        self.model = model
+        self.k = k
+        if samplingScheme is None : 
+            samplingScheme = getTopKTokens
+        
+        self.samplingKwargs = kwargs
+        self.sampler = samplingScheme
+    
+    @override
+    def step(self, inputSeq : Tensor, numTokens : int = 1, *args, **kwargs ) -> tuple[Tensor,Tensor] :
+        """
+        @param inputSeq  : The input sequence (Not Batched).
+        @param numTokens : Number of tokens to decode, by default
+                           the value is 1.
+        """
+        additionalTokens = []
+        
+        while len(additionalTokens) < numTokens :
+            nextTokens, probabilityDistributions = self.decode(inputSeq, samplingKwargs = self.samplingKwargs, *args, **kwargs)
+            additionalTokens.extend([(token,probability) for token, probability in zip(nextTokens, probabilityDistributions)])
+            inputSeq = torch.cat((inputSeq, nextTokens.unsqueeze(1)), dim = 1)
+        
+        additionalTokens = additionalTokens[:numTokens]
+
+        if len(additionalTokens) == 0 :
+            print("No additional tokens generated")
+            return torch.tensor([]), torch.tensor([])
+    
+        additionalTokenIds, tokenProbabiltiyDistributions = zip(*additionalTokens)
+
+        return torch.stack(additionalTokenIds), torch.stack(tokenProbabiltiyDistributions)
+
+    @override
+    def decode(self, inputSeq : Tensor , samplingKwargs,  *args, **kwargs) -> tuple[Tensor,Tensor] :
+        """
+        @param inputSeq  : The input sequence.
+        """
+        additionalTokens = []
+
+        # Call the smaller model k times and get the outputs.
+        # Will use another decoder for this, as specified in the kwargs.
+        draftModelDecoder = kwargs.pop("draftModelDecoder", None)
+
+        if draftModelDecoder is None : 
+            raise Exception("draftModelDecoder not specified.")
+
+        # First call the smaller model to get the additional k tokens
+        # Along with their probabilities.
+        draftInput : Tensor = draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
+        
+        draftModelPredictions = draftInput[0]
+        draftModelDistributions = draftInput[1]
+
+        # Now we call the larger model to get the outputs.
+        modelOutputPredictions : Tensor = self.model.infer(torch.cat((inputSeq, draftModelPredictions), dim = -1), lastK = self.k + 1)
+
+        for i in range(self.k) :
+            # p(x)
+            modelOutputDistribution : Tensor = modelOutputPredictions[..., i]
+            # q(x)
+            draftModelDistribution : Tensor = draftModelDistributions[..., i]
+
+            # output by the draft model
+            draftModelToken : Tensor = draftModelPredictions[..., i]
+            
+            draftModelProbability : Tensor = draftModelDistribution[draftModelToken]
+            modelOutputProbability : Tensor = modelOutputDistribution[draftModelToken]
+            
+            if modelOutputProbability > draftModelProbability :
+                # The draft is fine and we can move on.
+                # ACCEPTED
+                additionalTokens.append((draftModelToken, modelOutputDistribution))
+            else :
+                # We reject the draft token with probability 1 - modelOutputProbability/draftModelProbability
+                rejectionProbability = torch.clamp(1 - modelOutputProbability / draftModelProbability, min=0, max=1)
+                rejected = torch.bernoulli(rejectionProbability)
+
+                if rejected : 
+                    # REJECTED
+                    # In this case we sample from the normalized and adjusted probability distribution :
+                    # p'(x) = norm(max(0, p(x) - q(x)))
+                    adjustedProbabilityDistribution = torch.max(torch.zeros_like(modelOutputDistribution), modelOutputDistribution - draftModelDistribution)
+
+                    adjustedProbabilityDistribution = adjustedProbabilityDistribution / (adjustedProbabilityDistribution.sum(dim = -1, keepdim = True) + EPSILON)
+                    
+                    # Sample from the adjusted probability distribution
+                    nextToken = torch.multinomial(adjustedProbabilityDistribution, num_samples = 1)[0]
+                    additionalTokens.append((nextToken, adjustedProbabilityDistribution))
+                    break
+                else :
+                    # ACCEPTED
+                    additionalTokens.append((draftModelToken, draftModelDistribution))
+
+        # Check the number of additional tokens generated 
+        if len(additionalTokens) == self.k :
+            # All draft tokens were accepted.
+            # In this case, we will add the final token 
+            # from the larger model.
+            additionalTokens.append((self.sampler(modelOutputPredictions[..., -1], **samplingKwargs)[0], modelOutputPredictions[..., -1]))
+        
+        additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
+
+        return torch.stack(additionalTokenIds), torch.stack(additionalTokenDistributions)

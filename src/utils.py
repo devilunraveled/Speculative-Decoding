@@ -1,38 +1,39 @@
-import numpy as np
-from numpy import ndarray as NDArray
-import numpy.random as random
+import torch
 
-############ SAMPLING TECHNIQUES ############
-
-def getMostProbableToken( distribution : NDArray ) :
+def getMostProbableToken(distribution: torch.Tensor):
     """
-    Returns the token index with the highest probabilty. 
+    Returns the token index with the highest probability and its corresponding probability.
     """
-    return distribution.argmax(axis = -1)
+    token_index = distribution.argmax(dim=-1)
+    token_prob = distribution.max(dim=-1).values
+    return token_index, token_prob
 
-def getATokenFromTopK( distribution : NDArray, k : int) :
+def getTopKTokens(distribution: torch.Tensor, k: int, normalize: bool = False):
+    """
+    Returns the top k most probable tokens and their probabilities.
+    """
+    topKIndices = distribution.argsort(dim=-1)[..., -k:]
+    topKValues = distribution.gather(dim=-1, index=topKIndices)
+
+    if normalize:
+        topKValues = topKValues / topKValues.sum(dim=-1, keepdim=True).to(torch.float32)
+
+    return topKIndices, topKValues
+
+def getATokenFromTopK(distribution: torch.Tensor, k: int):
     """
     Returns a weighted random choice from the normalized
-    probability distribution from the top k most 
-    probable tokens.
+    probability distribution of the top k most probable tokens,
+    along with the probability of the chosen token.
     """
-    topKIndices, topKValues = getTopKTokens(distribution, k)
-    if topKValues.sum(axis = -1, dtype = 'float32') == 0 :
-        raise Exception("All values are 0.")
+    topKIndices, topKValues = getTopKTokens(distribution, k, normalize=True)
 
-    topKValues = topKValues / topKValues.sum(axis = -1, dtype = 'float32')
-    return random.choice(a = topKIndices, p = topKValues, replace = False)
+    if topKValues.sum(dim=-1).to(torch.float32) == 0:
+        raise ValueError("All values are 0.")
 
-def getTopKTokens( distribution : NDArray , k : int, normalize : bool = False ) :
-    """
-    Returns the top k most probable tokens.
-    """
-    topKIndices = distribution.argsort(axis=-1)[..., -k:]
-    topKValues = np.take_along_axis(distribution, topKIndices, axis=-1)
-    # print(topKIndices.shape, topKIndices)
-    # print(distribution.shape, topKIndices)
-    # topKValues = distribution[topKIndices]
-    if normalize :
-        topKValues = topKValues / topKValues.sum(axis = -1, dtype = 'float32')
-    
-    return topKIndices, topKValues
+    # Sample a token index from the top-k indices using the probabilities
+    sampled_idx = torch.multinomial(topKValues, num_samples=1).squeeze(-1)
+    chosen_token_index = topKIndices.gather(dim=-1, index=sampled_idx.unsqueeze(-1)).squeeze(-1)
+    chosen_token_prob = topKValues.gather(dim=-1, index=sampled_idx.unsqueeze(-1)).squeeze(-1)
+
+    return chosen_token_index, chosen_token_prob
