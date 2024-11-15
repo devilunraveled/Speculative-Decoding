@@ -19,7 +19,7 @@ class HuggingFaceModelWrapper:
 		:return: a (batched) distribution over the vocabulary.
 		"""
 		with torch.no_grad():
-			return self.model(inputSeq, output_hidden_states=False).logits[:, -lastK:, :]
+			return self.model(inputSeq, output_hidden_states=False).logits[0, -lastK:, :]
 	
 class Inferencer:
 	def __init__(self, tokenizer, decoder : BaseDecoder):
