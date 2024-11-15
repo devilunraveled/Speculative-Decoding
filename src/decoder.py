@@ -111,11 +111,11 @@ class BeamSearchDecoder(Decoder):
         return self.sampler(distribution, k = self.beamSize, *args, **kwargs)
 
 class SpeculativeDecoder(Decoder):
-    def __init__(self, draftModel, model, k : int, samplingScheme : Optional[Callable] = None, **kwargs):
+    def __init__(self, model, k : int, draftModelDecoder, samplingScheme : Optional[Callable] = None, **kwargs):
         super().__init__()
-        self.draftModel = draftModel
         self.model = model
         self.k = k
+        self.draftModelDecoder = draftModelDecoder
         if samplingScheme is None : 
             samplingScheme = getTopKTokens
         
@@ -123,11 +123,11 @@ class SpeculativeDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : Tensor, numTokens : int = 1, *args, **kwargs ) -> tuple[Tensor,Tensor] :
+    def step(self, inputSeq : Tensor, numTokens : int = 5, *args, **kwargs ) -> tuple[Tensor,Tensor] :
         """
         @param inputSeq  : The input sequence (Not Batched).
         @param numTokens : Number of tokens to decode, by default
-                           the value is 1.
+                           the value is 5.
         """
         additionalTokens = []
         
@@ -153,16 +153,9 @@ class SpeculativeDecoder(Decoder):
         """
         additionalTokens = []
 
-        # Call the smaller model k times and get the outputs.
-        # Will use another decoder for this, as specified in the kwargs.
-        draftModelDecoder = kwargs.pop("draftModelDecoder", None)
-
-        if draftModelDecoder is None : 
-            raise Exception("draftModelDecoder not specified.")
-
         # First call the smaller model to get the additional k tokens
         # Along with their probabilities.
-        draftInput : Tensor = draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
+        draftInput : Tensor = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
         
         draftModelPredictions = draftInput[0]
         draftModelDistributions = draftInput[1]
@@ -172,17 +165,17 @@ class SpeculativeDecoder(Decoder):
 
         for i in range(self.k) :
             # p(x)
-            modelOutputDistribution : Tensor = modelOutputPredictions[..., i]
+            modelOutputDistribution : Tensor = modelOutputPredictions[i]
             # q(x)
-            draftModelDistribution : Tensor = draftModelDistributions[..., i]
+            draftModelDistribution : Tensor = draftModelDistributions[i]
 
             # output by the draft model
-            draftModelToken : Tensor = draftModelPredictions[..., i]
+            draftModelToken : Tensor = draftModelPredictions[i]
             
             draftModelProbability : Tensor = draftModelDistribution[draftModelToken]
             modelOutputProbability : Tensor = modelOutputDistribution[draftModelToken]
             
-            if modelOutputProbability > draftModelProbability :
+            if modelOutputProbability >= draftModelProbability :
                 # The draft is fine and we can move on.
                 # ACCEPTED
                 additionalTokens.append((draftModelToken, modelOutputDistribution))
