@@ -1,15 +1,7 @@
-from langchain_ollama import OllamaLLM
-from langchain_core.prompts import ChatPromptTemplate
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-model = OllamaLLM(model = "llama3.1:8b")
-
-def getResponse(query):
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("user", query),
-        ])
-    output = model.invoke({"input" : prompt})
-    print(output.logits)
+tokenizer = AutoTokenizer.from_pretrained("openai-community/gpt2-xl")
+model = AutoModelForCausalLM.from_pretrained("openai-community/gpt2-xl")	
 
 from typing import List
 import torch
@@ -21,13 +13,13 @@ class HuggingFaceModelWrapper:
 		self.model = model
 		self.model.eval()
 	
-	def infer(self, inputSeq):
+	def infer(self, inputSeq, lastK = 1):
 		"""
 		:param inputSeq: a (batched) sequence of tokens.
 		:return: a (batched) distribution over the vocabulary.
 		"""
 		with torch.no_grad():
-			return self.model(inputSeq, output_hidden_states=False).logits[:, -1, :]
+			return self.model(inputSeq, output_hidden_states=False).logits[:, -lastK:, :]
 	
 class Inferencer:
 	def __init__(self, tokenizer, decoder : BaseDecoder):
