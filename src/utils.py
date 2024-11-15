@@ -1,4 +1,13 @@
 import torch
+from dataclasses import dataclass
+
+@dataclass
+class Acceptences : 
+    accept_direct : int
+    reject : int
+    accept_indirect : int
+    drafted : int
+    total_generated : int
 
 def getMostProbableToken(distribution: torch.Tensor):
     """
@@ -12,15 +21,15 @@ def getTopKTokens(distribution: torch.Tensor, k: int, normalize: bool = False):
     """
     Returns the top k most probable tokens and their probabilities.
     """
-    topKIndices = distribution.argsort(dim=-1)[..., -k:]
+    topKIndices = distribution.argsort(dim=-1)[-k:]
     topKValues = distribution.gather(dim=-1, index=topKIndices)
-
+    
     if normalize:
-        topKValues = topKValues / topKValues.sum(dim=-1, keepdim=True).to(torch.float32)
+        topKValues = topKValues / topKValues.sum(dim=-1, keepdim=True)
 
     return topKIndices, topKValues
 
-def getATokenFromTopK(distribution: torch.Tensor, k: int):
+def getATokenFromTopK(distribution: torch.Tensor, k: int = 5):
     """
     Returns a weighted random choice from the normalized
     probability distribution of the top k most probable tokens,
