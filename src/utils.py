@@ -2,12 +2,15 @@ import torch
 from dataclasses import dataclass
 
 @dataclass
-class Acceptences : 
+class Information : 
     accept_direct : int
     reject : int
     accept_indirect : int
     drafted : int
     total_generated : int
+    running_time : float
+    memory_footprint : float
+    max_util : float
 
 def getMostProbableToken(distribution: torch.Tensor):
     """

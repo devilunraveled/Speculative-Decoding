@@ -1,6 +1,8 @@
 from src.decoder import Decoder, SpeculativeDecoder, SimpleDecoder
 from src.model import HuggingFaceModelWrapper
 from src.utils import getATokenFromTopK
+import torch
+import time
 
 class Pipeline:
     def __init__(self, decoder : Decoder, model : HuggingFaceModelWrapper):
@@ -12,11 +14,16 @@ class Pipeline:
         inputs = self.model.tokenizer(inputText, return_tensors="pt", max_length=512, truncation=True).to('cuda')
 
         # Generate the output text.
-        generated, _, acceptences = self.decoder.step(inputSeq = inputs.input_ids, numTokens = maxLen)
+        startTime = time.time()
+        generated, _, information = self.decoder.step(inputSeq = inputs.input_ids, numTokens = maxLen)
+        runTime = time.time() - startTime
+
+        information.memory_footprint = torch.cuda.memory_allocated() / 1024 / 1024
+        information.running_time = runTime
 
         # Decode the generated text.
         outputText = self.model.tokenizer.decode(generated, skip_special_tokens=True)
-        print(acceptences)
+        print(information)
         return outputText
 
 if __name__ == '__main__' :

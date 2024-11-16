@@ -4,7 +4,7 @@ from overrides import override
 from torch import Tensor
 import torch
 
-from src.utils import getMostProbableToken, getTopKTokens, Acceptences
+from src.utils import getMostProbableToken, getTopKTokens, Information
 
 EPSILON = 1e-10
 
@@ -127,19 +127,19 @@ class SpeculativeDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : Tensor, numTokens : int = 5, *args, **kwargs ) -> tuple[Tensor,Tensor, Acceptences] :
+    def step(self, inputSeq : Tensor, numTokens : int = 5, *args, **kwargs ) -> tuple[Tensor,Tensor, Information] :
         """
         @param inputSeq  : The input sequence (Not Batched).
         @param numTokens : Number of tokens to decode, by default
                            the value is 5.
         """
 
-        acceptence = Acceptences(0, 0, 0, 0, 0)
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0)
         
         additionalTokens = []
         
         while len(additionalTokens) < numTokens :
-            nextTokens, probabilityDistributions, acceptence = self.decode(inputSeq, samplingKwargs = self.samplingKwargs, *args, acceptence = acceptence, **kwargs)
+            nextTokens, probabilityDistributions, information = self.decode(inputSeq, samplingKwargs = self.samplingKwargs, *args, information = information, **kwargs)
             additionalTokens.extend([(token,probability) for token, probability in zip(nextTokens, probabilityDistributions)])
             inputSeq = torch.cat((inputSeq, nextTokens.unsqueeze(0)), dim = 1)
 
@@ -147,35 +147,37 @@ class SpeculativeDecoder(Decoder):
 
         if len(additionalTokens) == 0 :
             print("No additional tokens generated")
-            return torch.tensor([]), torch.tensor([]), acceptence
+            return torch.tensor([]), torch.tensor([]), information
     
         additionalTokenIds, tokenProbabiltiyDistributions = zip(*additionalTokens)
 
-        return torch.stack(additionalTokenIds), torch.stack(tokenProbabiltiyDistributions), acceptence
+        return torch.stack(additionalTokenIds), torch.stack(tokenProbabiltiyDistributions), information
 
     @override
-    def decode(self, inputSeq : Tensor , samplingKwargs,  *args, **kwargs) -> tuple[Tensor,Tensor,Acceptences] :
+    def decode(self, inputSeq : Tensor , samplingKwargs,  *args, **kwargs) -> tuple[Tensor,Tensor,Information] :
         """
         @param inputSeq  : The input sequence.
         """
         verbose = kwargs.pop("verbose", False)
-        acceptences = kwargs.pop("acceptence")
+        information = kwargs.pop("information")
         additionalTokens = []
 
         # print(f"Input Seq Shape : {inputSeq.shape}")
         # First call the smaller model to get the additional k tokens
         # Along with their probabilities.
         draftInput : Tensor = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
+        information.max_util = max(information.max_util, torch.cuda.utilization())
         
         draftModelPredictions = draftInput[0]
         # print(f"Draft Model Predictions Shape : {draftModelPredictions.shape}")
         draftModelDistributions = draftInput[1]
         # print(f"Draft Model Distribution Shape : {draftModelDistributions.shape}")
         
-        acceptences.drafted += self.k # Total Proposed
+        information.drafted += self.k # Total Proposed
 
         # Now we call the larger model to get the outputs.
         modelOutputPredictions : Tensor = self.model.infer(torch.cat((inputSeq, draftModelPredictions.unsqueeze(0)), dim = -1), lastK = self.k + 1)
+        information.max_util = max(information.max_util, torch.cuda.utilization())
         # print(f"Model Output Predictions Shape : {modelOutputPredictions.shape}")
 
         for i in range(self.k) :
@@ -195,7 +197,7 @@ class SpeculativeDecoder(Decoder):
             if modelOutputProbability >= draftModelProbability :
                 # The draft is fine and we can move on.
                 # ACCEPTED
-                acceptences.accept_direct += 1
+                information.accept_direct += 1
                 if verbose :
                     print(f"Token : `{self.model.tokenizer.decode(draftModelToken, skip_special_tokens = True)}` Accepted directly.")
                 additionalTokens.append((draftModelToken, modelOutputDistribution))
@@ -206,7 +208,7 @@ class SpeculativeDecoder(Decoder):
 
                 if rejected : 
                     # REJECTED
-                    acceptences.reject += (self.k - i)
+                    information.reject += (self.k - i)
                     # In this case we sample from the normalized and adjusted probability distribution :
                     # p'(x) = norm(max(0, p(x) - q(x)))
                     adjustedProbabilityDistribution = torch.clip(modelOutputDistribution - draftModelDistribution, min = 0, max = 1)
@@ -221,7 +223,7 @@ class SpeculativeDecoder(Decoder):
                     break
                 else :
                     # ACCEPTED
-                    acceptences.accept_indirect += 1
+                    information.accept_indirect += 1
                     if verbose :
                         print(f"Token : {self.model.tokenizer.decode(draftModelToken, skip_special_tokens = True)} Accepted.")
                     additionalTokens.append((draftModelToken, draftModelDistribution))
@@ -237,6 +239,6 @@ class SpeculativeDecoder(Decoder):
             additionalTokens.append((targetModelToken, modelOutputPredictions[-1]))
         
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
-        acceptences.total_generated += len(additionalTokenIds)
+        information.total_generated += len(additionalTokenIds)
 
-        return torch.stack(additionalTokenIds), torch.cat(additionalTokenDistributions), acceptences
+        return torch.stack(additionalTokenIds), torch.cat(additionalTokenDistributions), information
