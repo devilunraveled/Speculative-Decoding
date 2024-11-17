@@ -36,16 +36,18 @@ class SimpleDecoder(Decoder):
         decodes the next token.
         """
         # return self.decode(self.model.infer(inputSeq), *args, **kwargs)
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, None)
         additionalTokens = []
 
         for _ in range(numTokens):
             distribution = self.model.infer(inputSeq)
+            information.max_util = max(information.max_util, torch.cuda.utilization())
             index = self.decode(distribution, *args, **kwargs)[0]
             additionalTokens.append((index, distribution))
             inputSeq = torch.cat((inputSeq, index.unsqueeze(1)), dim = 1)
         
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
-        return torch.cat(additionalTokenIds), torch.cat(additionalTokenDistributions)
+        return torch.cat(additionalTokenIds), torch.cat(additionalTokenDistributions), information
     
     @override
     def decode(self, *args, **kwargs) -> Any :
@@ -134,7 +136,7 @@ class SpeculativeDecoder(Decoder):
                            the value is 5.
         """
 
-        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0)
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, None)
         
         additionalTokens = []
         
@@ -172,6 +174,7 @@ class SpeculativeDecoder(Decoder):
         # print(f"Draft Model Predictions Shape : {draftModelPredictions.shape}")
         draftModelDistributions = draftInput[1]
         # print(f"Draft Model Distribution Shape : {draftModelDistributions.shape}")
+        information.subDecoder_info = draftInput[2]
         
         information.drafted += self.k # Total Proposed
 

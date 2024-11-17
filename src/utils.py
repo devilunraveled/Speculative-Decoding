@@ -11,6 +11,7 @@ class Information :
     running_time : float
     memory_footprint : float
     max_util : float
+    subDecoder_info : None
 
 def getMostProbableToken(distribution: torch.Tensor):
     """
