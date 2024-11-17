@@ -46,7 +46,7 @@ if __name__ == '__main__':
     # Load the SQuAD dataset.
     dataset = load_dataset("squad", split="validation")
 
-    dataset = dataset.select(range(3000))
+    dataset = dataset.select(range(5000))
 
     # Define the two models.
     draftModel = HuggingFaceModelWrapper('openai-community/gpt2').to('cuda')
@@ -70,32 +70,33 @@ if __name__ == '__main__':
     results = []
 
     # Iterate over the SQuAD dataset for inference.
-    with alive_bar(len(dataset), length=50, title="SQuAD Inference") as bar:
-        for i, data in enumerate(dataset):
-            context = data["context"]
-            question = data["question"]
-            ground_truth = data["answers"]["text"][0] if len(data["answers"]["text"]) > 0 else ""
+    try :
+        with alive_bar(len(dataset), length=50, title="SQuAD Inference") as bar:
+            for i, data in enumerate(dataset):
+                context = data["context"]
+                question = data["question"]
+                ground_truth = data["answers"]["text"][0] if len(data["answers"]["text"]) > 0 else ""
 
-            # Run inference.
-            output = pipeline(context=context, question=question, maxLen=50)
+                # Run inference.
+                output = pipeline(context=context, question=question, maxLen=50)
 
-            # Add ground truth for evaluation later.
-            output["ground_truth"] = ground_truth
+                # Add ground truth for evaluation later.
+                output["ground_truth"] = ground_truth
 
-            # Append the result.
-            results.append(output)
+                # Append the result.
+                results.append(output)
 
-            # Print progress every 100 samples.
-            if (i + 1) % 100 == 0:
-                print(f"Processed {i + 1} samples")
+                # Print progress every 100 samples.
+                if (i + 1) % 100 == 0:
+                    print(f"Processed {i + 1} samples")
 
-            bar()
+                bar()
+    finally:
+        # Convert the results to a DataFrame.
+        df = pd.DataFrame(results)
 
-    # Convert the results to a DataFrame.
-    df = pd.DataFrame(results)
+        # Save the DataFrame to a file.
+        df.to_pickle("squad_inference_results.pkl")
+        df.to_csv("squad_inference_results.csv", index=False)
 
-    # Save the DataFrame to a file.
-    df.to_pickle("squad_inference_results.pkl")
-    df.to_csv("squad_inference_results.csv", index=False)
-
-    print("Inference completed and results saved.")
+        print("Inference completed and results saved.")
