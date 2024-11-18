@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from typing import Any, List, Optional, Tuple
 from overrides import override
-from torch import Tensor
 import torch
 
 from src.utils import getMostProbableToken, getTopKTokens, Information
@@ -30,7 +29,7 @@ class SimpleDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : Tensor, numTokens : int, *args, **kwargs) -> Any:
+    def step(self, inputSeq , numTokens : int, *args, **kwargs) -> Any:
         """
         Passes the inputSeq to the model and 
         decodes the next token.
@@ -75,7 +74,7 @@ class BeamSearchDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : Tensor, numTokens : int = 1, *args, **kwargs ) -> List :
+    def step(self, inputSeq, numTokens : int = 1, *args, **kwargs ) -> List :
         """
         Takes in the input sequence and generates the
         next token.
@@ -83,10 +82,10 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-        beams : List[Tuple[Tensor, float]] = [(inputSeq.clone(), 0)]
+        beams = [(inputSeq.clone(), 0)]
 
         for _ in range(numTokens) :
-            newCandidates : List[Tuple[Tensor, float]] = []
+            newCandidates = []
 
             for ( sequences, logProbs ) in beams :
                 # print(sequences)
@@ -106,7 +105,7 @@ class BeamSearchDecoder(Decoder):
         return list(beams[0][0][...,-numTokens:])
 
     @override
-    def decode(self, distribution : Tensor, *args, **kwargs) -> Tuple[Tensor, Tensor] :
+    def decode(self, distribution , *args, **kwargs) :
         """
         @param distribution : The distribution from the
         model that we want to decode. Should be of the size 
@@ -127,7 +126,7 @@ class SpeculativeDecoder(Decoder):
         self.sampler = samplingScheme
     
     @override
-    def step(self, inputSeq : Tensor, numTokens : int = 5, *args, **kwargs ) -> tuple[Tensor,Tensor, Information] :
+    def step(self, inputSeq , numTokens : int = 5, *args, **kwargs ) :
         """
         @param inputSeq  : The input sequence (Not Batched).
         @param numTokens : Number of tokens to decode, by default
@@ -154,7 +153,7 @@ class SpeculativeDecoder(Decoder):
         return torch.stack(additionalTokenIds), torch.stack(tokenProbabiltiyDistributions), information
 
     @override
-    def decode(self, inputSeq : Tensor , samplingKwargs,  *args, **kwargs) -> tuple[Tensor,Tensor,Information] :
+    def decode(self, inputSeq , samplingKwargs,  *args, **kwargs) :
         """
         @param inputSeq  : The input sequence.
         """
@@ -165,7 +164,7 @@ class SpeculativeDecoder(Decoder):
         # print(f"Input Seq Shape : {inputSeq.shape}")
         # First call the smaller model to get the additional k tokens
         # Along with their probabilities.
-        draftInput : Tensor = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
+        draftInput = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
         information.max_util = max(information.max_util, torch.cuda.utilization())
         
         draftModelPredictions = draftInput[0]
@@ -176,23 +175,23 @@ class SpeculativeDecoder(Decoder):
         information.drafted += self.k # Total Proposed
 
         # Now we call the larger model to get the outputs.
-        modelOutputPredictions : Tensor = self.model.infer(torch.cat((inputSeq, draftModelPredictions.unsqueeze(0)), dim = -1), lastK = self.k + 1)
+        modelOutputPredictions = self.model.infer(torch.cat((inputSeq, draftModelPredictions.unsqueeze(0)), dim = -1), lastK = self.k + 1)
         information.max_util = max(information.max_util, torch.cuda.utilization())
         # print(f"Model Output Predictions Shape : {modelOutputPredictions.shape}")
 
         for i in range(self.k) :
             # p(x)
-            modelOutputDistribution : Tensor = modelOutputPredictions[i]
+            modelOutputDistribution  = modelOutputPredictions[i]
             # q(x)
-            draftModelDistribution : Tensor = draftModelDistributions[i]
+            draftModelDistribution  = draftModelDistributions[i]
 
             # output by the draft model
-            draftModelToken : Tensor = draftModelPredictions[i]
+            draftModelToken  = draftModelPredictions[i]
             if verbose :
                 print(f"Draft Model Token : `{self.model.tokenizer.decode(draftModelToken, skip_special_tokens = True)}`")
 
-            draftModelProbability : Tensor = draftModelDistribution[draftModelToken]
-            modelOutputProbability : Tensor = modelOutputDistribution[draftModelToken]
+            draftModelProbability  = draftModelDistribution[draftModelToken]
+            modelOutputProbability  = modelOutputDistribution[draftModelToken]
             
             if modelOutputProbability >= draftModelProbability :
                 # The draft is fine and we can move on.

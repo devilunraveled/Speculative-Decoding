@@ -43,28 +43,34 @@ class Pipeline:
         }
 
 if __name__ == '__main__':
+    import sys
+
+    decodingType = sys.argv[1]
+
     # Load the SQuAD dataset.
     dataset = load_dataset("squad", split="validation")
-
     dataset = dataset.select(range(5000))
 
     # Define the two models.
-    draftModel = HuggingFaceModelWrapper('openai-community/gpt2').to('cuda')
+    if decodingType == 'speculative' :
+        draftModel = HuggingFaceModelWrapper('openai-community/gpt2').to('cuda')
+        draftModelDecoder = SimpleDecoder(model=draftModel, config={})
+    
     mainModel = HuggingFaceModelWrapper('openai-community/gpt2-large').to('cuda')
 
-    # Build the decoder for the draft model.
-    draftModelDecoder = SimpleDecoder(model=draftModel, config={})
-
     # Initialize the Speculative Decoder.
-    speculativeDecoder = SpeculativeDecoder(
-        model=mainModel,
-        k=5,
-        draftModelDecoder=draftModelDecoder,
-        samplingScheme=getATokenFromTopK
-    )
+    if decodingType == 'speculative' :
+        mainModelDecoder = SpeculativeDecoder(
+            model=mainModel,
+            k=5,
+            draftModelDecoder=draftModelDecoder,
+            samplingScheme=getATokenFromTopK
+        )
+    else :
+        mainModelDecoder = SimpleDecoder(model=mainModel, config={})
 
     # Create the pipeline.
-    pipeline = Pipeline(decoder=speculativeDecoder, model=mainModel)
+    pipeline = Pipeline(decoder=mainModelDecoder, model=mainModel)
 
     # Prepare a list to store the results.
     results = []
@@ -96,7 +102,7 @@ if __name__ == '__main__':
         df = pd.DataFrame(results)
 
         # Save the DataFrame to a file.
-        df.to_pickle("squad_inference_results.pkl")
-        df.to_csv("squad_inference_results.csv", index=False)
+        df.to_pickle("squad_inference_results_greedy.pkl")
+        df.to_csv("squad_inference_results_greedy.csv", index=False)
 
         print("Inference completed and results saved.")
