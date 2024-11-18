@@ -1,3 +1,4 @@
+from typing import Any
 import torch
 from dataclasses import dataclass
 
@@ -11,6 +12,7 @@ class Information :
     running_time : float
     memory_footprint : float
     max_util : float
+    subDecoder_info : Any
 
 def getMostProbableToken(distribution: torch.Tensor):
     """
