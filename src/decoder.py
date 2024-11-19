@@ -46,6 +46,7 @@ class SimpleDecoder(Decoder):
             inputSeq = torch.cat((inputSeq, index.unsqueeze(1)), dim = 1)
         
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
+        print(torch.cat(additionalTokenDistributions).shape)
         return torch.cat(additionalTokenIds), torch.cat(additionalTokenDistributions), information
     
     @override
@@ -84,27 +85,41 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-        beams = [(inputSeq.clone(), 0)]
+        # beams = [(inputSeq.clone(), 0)]
 
-        for _ in range(numTokens) :
-            newCandidates = []
+        # for _ in range(numTokens) :
+        #     newCandidates = []
 
-            for ( sequences, logProbs ) in beams :
-                # print(sequences)
-                distribution = self.model.infer(torch.tensor(sequences))
-                topKIndices, topKValues = self.decode(distribution, *args, normalize = False, **kwargs)
+        #     for ( sequences, logProbs ) in beams :
+        #         # print(sequences)
+        #         distribution = self.model.infer(torch.tensor(sequences))
+        #         topKIndices, topKValues = self.decode(distribution, *args, normalize = False, **kwargs)
 
-                for index, value in zip(topKIndices[0], topKValues[0]) :
-                    # print(sequences, index)
-                    newSeq = torch.cat((sequences, torch.tensor([[index]])), dim=-1)
-                    # print(newSeq)
-                    newLogProb = logProbs + torch.log(value+1e-10)
-                    newCandidates.append((newSeq, newLogProb.item()))
+        #         for index, value in zip(topKIndices[0], topKValues[0]) :
+        #             # print(sequences, index)
+        #             newSeq = torch.cat((sequences, torch.tensor([[index]])), dim=-1)
+        #             # print(newSeq)
+        #             newLogProb = logProbs + torch.log(value+1e-10)
+        #             newCandidates.append((newSeq, newLogProb.item()))
 
-            newCandidates.sort(key = lambda x : x[1], reverse = True)
-            beams = newCandidates[:self.beamSize]
-        
-        return list(beams[0][0][...,-numTokens:])
+        #     newCandidates.sort(key = lambda x : x[1], reverse = True)
+        #     beams = newCandidates[:self.beamSize]
+
+        # return list(beams[0][0][...,-numTokens:])
+
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, None)
+
+        beamOutput = self.model.model.generate(
+                                            inputSeq,
+                                            max_length = inputSeq.shape[1] + numTokens,
+                                            num_beams = self.beamSize,
+                                            output_logits = True,
+                                            output_scores = True,
+                                            return_dict_in_generate = True,
+                                            **kwargs)
+        logits = beamOutput.logits[0][beamOutput.beam_indices[0]][len(inputSeq[0]):]
+        distribution = torch.softmax(logits, dim = -1)
+        return beamOutput.sequences[0][len(inputSeq[0]):], distribution, information
 
     @override
     def decode(self, distribution , *args, **kwargs) :
