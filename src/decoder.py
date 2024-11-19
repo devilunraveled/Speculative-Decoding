@@ -117,6 +117,8 @@ class BeamSearchDecoder(Decoder):
                                             output_scores = True,
                                             return_dict_in_generate = True,
                                             **kwargs)
+        information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         logits = beamOutput.logits[0][beamOutput.beam_indices[0]][len(inputSeq[0]):]
         distribution = torch.softmax(logits, dim = -1)
         return beamOutput.sequences[0][len(inputSeq[0]):], distribution, information
@@ -183,6 +185,7 @@ class SpeculativeDecoder(Decoder):
         # Along with their probabilities.
         draftInput = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
         information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         
         draftModelPredictions = draftInput[0]
         # print(f"Draft Model Predictions Shape : {draftModelPredictions.shape}")
@@ -195,6 +198,7 @@ class SpeculativeDecoder(Decoder):
         # Now we call the larger model to get the outputs.
         modelOutputPredictions = self.model.infer(torch.cat((inputSeq, draftModelPredictions.unsqueeze(0)), dim = -1), lastK = self.k + 1)
         information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         # print(f"Model Output Predictions Shape : {modelOutputPredictions.shape}")
 
         for i in range(self.k) :

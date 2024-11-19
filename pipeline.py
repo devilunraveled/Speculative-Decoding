@@ -26,7 +26,7 @@ class Pipeline:
         generated, _, information = self.decoder.step(inputSeq=inputs.input_ids, numTokens=maxLen)
         runTime = time.time() - startTime
 
-        information.memory_footprint = torch.cuda.memory_allocated() / 1024 / 1024
+        information.memory_footprint = max(torch.cuda.memory_allocated() / 1024 / 1024, information.memory_footprint)
         information.running_time = runTime
 
         # Decode the generated text.
