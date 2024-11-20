@@ -10,7 +10,8 @@ def squadEvaluation(filePath, goldAnswersFile ):
     
     totalTimeTaken = sum(data['run_time'])/len(data['run_time'])
     peakMemoryUsage = max(data['memory_footprint'])
-    
+    # peakGPUUtilization = max( info.max_util for info in data['information'] )
+
     with open(goldAnswersFile, 'rb') as f:
         goldAnswers = pkl.load(f)
     
@@ -21,6 +22,8 @@ def squadEvaluation(filePath, goldAnswersFile ):
     except KeyError:
         modelResponses = data['predicted_summary'].tolist()
     predictions = []
+    
+
 
     for i in range(len(modelResponses)):
         predictions.append(
@@ -35,12 +38,7 @@ def squadEvaluation(filePath, goldAnswersFile ):
     assert results is not None
     results['run_time_per_sample'] = f"{totalTimeTaken:.2f} s"
     results['peak_memory_footprint'] = f"{peakMemoryUsage:.2f} MB"
-    
-    if 'nested' in filePath :
-        pass
-    elif 'speculative' in filePath:
-        # Compute total number of draft tokens
-        pass
+    # results['peak_gpu_utilization'] = f"{peakGPUUtilization:.2f}"
 
     pprint.pprint(results)
 if __name__ == '__main__':
