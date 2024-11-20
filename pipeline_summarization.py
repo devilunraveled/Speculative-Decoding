@@ -5,30 +5,39 @@ from pipeline import Pipeline
 from datasets import load_dataset
 import pandas as pd
 from alive_progress import alive_bar
+import sys
 
 if __name__ == "__main__":
+    decodingType = sys.argv[1]
+
     dataset = load_dataset("billsum", split="test")
 
-    dataset = dataset.select(range(3000))
+    dataset = dataset.select(range(1000))
 
     # Define the two models.
     # draftModel = HuggingFaceModelWrapper('openai-community/gpt2').to("cuda")
     mainModel = HuggingFaceModelWrapper('openai-community/gpt2-large').to("cuda")
 
-    # Build the decoder for the draft model.
-    # draftModelDecoder = SimpleDecoder(model=draftModel, config={})
-
-    # Initialize the Speculative Decoder.
-    # speculativeDecoder = SpeculativeDecoder(
-    #     model=mainModel,
-    #     k=5,
-    #     draftModelDecoder=draftModelDecoder,
-    #     samplingScheme=getATokenFromTopK
-    # )
-    simpleDecoder = SimpleDecoder(model=mainModel, samplingScheme=getATokenFromTopK, config={"eosTokenId": mainModel.tokenizer.eos_token_id})
+    decoder = None
+    if decodingType == "greedy" :
+        simpleDecoder = SimpleDecoder(model=mainModel, samplingScheme=getMostProbableToken, config={"eosTokenId": mainModel.tokenizer.eos_token_id})
+        decoder = simpleDecoder
+    elif decodingType == "topk" :
+        simpleDecoder = SimpleDecoder(model=mainModel, samplingScheme=getATokenFromTopK, config={"eosTokenId": mainModel.tokenizer.eos_token_id})
+        decoder = simpleDecoder
+    elif decodingType == "speculative" :
+        draftModel =  HuggingFaceModelWrapper('openai-community/gpt2').to("cuda")
+        draftModelDecoder = SimpleDecoder(model=draftModel, config={})
+        speculativeDecoder = SpeculativeDecoder(
+            model=mainModel,
+            k=5,
+            draftModelDecoder=draftModelDecoder,
+            samplingScheme=getATokenFromTopK
+        )
+        decoder = speculativeDecoder
 
     # Create the pipeline.
-    pipeline = Pipeline(decoder=simpleDecoder, model=mainModel)
+    pipeline = Pipeline(decoder=decoder, model=mainModel)
 
     # Prepare a list to store the results.
     results = []
@@ -62,7 +71,7 @@ if __name__ == "__main__":
         df = pd.DataFrame(results)
 
         # Save the DataFrame to a file.
-        df.to_pickle("billsum_inference_results_simple.pkl")
-        df.to_csv("billsum_inference_results_simple.csv", index=False)
+        df.to_pickle(f"billsum_inference_results_{decodingType}.pkl")
+        df.to_csv(f"billsum_inference_results_{decodingType}.csv", index=False)
 
         print("Inference completed and results saved.")
