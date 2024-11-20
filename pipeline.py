@@ -14,11 +14,14 @@ class Pipeline:
         self.decoder = decoder
         self.model = model
 
-    def __call__(self, context: str, question: str, maxLen: int = 100) -> dict:
+    def __call__(self, title: str, text: str, maxLen: int, datasetName : str) -> dict:
         """
         Run inference on the given context and question.
         """
-        inputText = f"Given the \nContext: {context}\n Answer this Question: {question}\n"
+        if datasetName == 'squad' : 
+            inputText = f"Given the \nContext: {context}\n Answer this Question: {question}\n"
+        elif datasetName == 'billsum' :
+            inputText = f"Title: {title}\nText: {text}\nSummary:"
         
         # Tokenize the input text.
         inputs = self.model.tokenizer(inputText, return_tensors="pt", max_length=512, truncation=True).to('cuda')
@@ -40,9 +43,9 @@ class Pipeline:
 
         # Return the output along with metadata.
         return {
-            "context": context,
-            "question": question,
-            "predicted_answer": outputText,
+            "title": title,
+            "text": text,
+            "predicted_summary": outputText,
             "information": information,
             "run_time": runTime,
             "memory_footprint": information.memory_footprint,
@@ -50,13 +53,15 @@ class Pipeline:
 
 if __name__ == '__main__':
     import sys
+    datasetName = sys.argv[1]
+    decodingType = sys.argv[2]
 
-    decodingType = sys.argv[1]
-    
-    datasetName = 'squad'
-    # Load the SQuAD dataset.
-    dataset = load_dataset(datasetName, split="validation")
-    dataset = dataset.select(range(5000))
+    dataset = load_dataset(datasetName, split="validation" if datasetName == 'squad' else 'test')
+
+    dataset = dataset.select(range(5000 if datasetName == 'squad' else 3000))
+
+    context = dataset[0]['context']
+    question = dataset[0]['question']
 
     # Define the two models.
     if decodingType == 'speculative' :
@@ -75,7 +80,6 @@ if __name__ == '__main__':
             samplingScheme=getATokenFromTopK
         )
         print(f"Loaded Draft Model Base : {draftModel1.model.name_or_path}")
-
         draftModel2 = HuggingFaceModelWrapper('openai-community/gpt2-large').to('cuda')
         draftModelDecoder = SpeculativeDecoder(
             model=draftModel2,
@@ -113,21 +117,32 @@ if __name__ == '__main__':
 
     # Iterate over the SQuAD dataset for inference.
     try :
-        with alive_bar(len(dataset), length=20, title="SQuAD Inference", force_tty=True) as bar:
+        with alive_bar(len(dataset), length=50, title="Billsum Inference") as bar:
             for i, data in enumerate(dataset):
-                context = data["context"]
-                question = data["question"]
-                
-                ground_truth = {
-                    'id'        : data['id'],
-                    'answers'    : data['answers']
-                }
+                if datasetName == 'billsum' :
+                    title = data["title"]
+                    text = data["text"]
+                    ground_truth = data["summary"]
 
-                # Run inference.
-                output = pipeline(context=context, question=question, maxLen=max((len(answer)) for answer in ground_truth['answers']['text']))
+                    # Run inference.
+                    output = pipeline(title=title, text=text, maxLen=100, datasetName=datasetName)
+                elif datasetName == 'squad' :
+                    context = data["context"]
+                    question = data["question"]
+                    
+                    ground_truth = {
+                        'id'        : data['id'],
+                        'answers'    : data['answers']
+                    }
+
+                    # Run inference.
+                    output = pipeline(context=context, question=question, maxLen=max((len(answer)) for answer in ground_truth['answers']['text']), datasetName = datasetName)
+
+
                 # Add ground truth for evaluation later.
                 output["ground_truth"] = ground_truth
-                
+
+                print(output["predicted_summary"])
                 # Append the result.
                 results.append(output)
                 
@@ -140,12 +155,4 @@ if __name__ == '__main__':
         df.to_pickle(f"{datasetName}_{decodingType}.pkl")
         df.to_csv(f"{datasetName}_{decodingType}.csv", index=False)
         
-        # import pickle
-        # # # Save the Gold 
-        # goldAnswers = [result['ground_truth'] for result in results]
-
-        # print(goldAnswers[0])
-        # with open(f"{datasetName}_gold_temp.pkl", 'wb') as f:
-        #     pickle.dump(goldAnswers, f)
-
         print("Inference completed and results saved.")

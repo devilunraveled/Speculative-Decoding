@@ -46,6 +46,7 @@ class SimpleDecoder(Decoder):
             inputSeq = torch.cat((inputSeq, index.unsqueeze(1)), dim = 1)
         
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
+        print(torch.cat(additionalTokenDistributions).shape)
         return torch.cat(additionalTokenIds), torch.cat(additionalTokenDistributions), information
     
     @override
@@ -84,27 +85,22 @@ class BeamSearchDecoder(Decoder):
         @param numTokens : Number of tokens to decode, by default
                            the value is 1.
         """
-        beams = [(inputSeq.clone(), 0)]
 
-        for _ in range(numTokens) :
-            newCandidates = []
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, None)
 
-            for ( sequences, logProbs ) in beams :
-                # print(sequences)
-                distribution = self.model.infer(torch.tensor(sequences))
-                topKIndices, topKValues = self.decode(distribution, *args, normalize = False, **kwargs)
-
-                for index, value in zip(topKIndices[0], topKValues[0]) :
-                    # print(sequences, index)
-                    newSeq = torch.cat((sequences, torch.tensor([[index]])), dim=-1)
-                    # print(newSeq)
-                    newLogProb = logProbs + torch.log(value+1e-10)
-                    newCandidates.append((newSeq, newLogProb.item()))
-
-            newCandidates.sort(key = lambda x : x[1], reverse = True)
-            beams = newCandidates[:self.beamSize]
-        
-        return list(beams[0][0][...,-numTokens:])
+        beamOutput = self.model.model.generate(
+                                            inputSeq,
+                                            max_length = inputSeq.shape[1] + numTokens,
+                                            num_beams = self.beamSize,
+                                            output_logits = True,
+                                            output_scores = True,
+                                            return_dict_in_generate = True,
+                                            **kwargs)
+        information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
+        logits = beamOutput.logits[0][beamOutput.beam_indices[0]][len(inputSeq[0]):]
+        distribution = torch.softmax(logits, dim = -1)
+        return beamOutput.sequences[0][len(inputSeq[0]):], distribution, information
 
     @override
     def decode(self, distribution , *args, **kwargs) :
@@ -172,6 +168,7 @@ class SpeculativeDecoder(Decoder):
         # Along with their probabilities.
         draftInput = self.draftModelDecoder.step(numTokens = self.k, inputSeq = inputSeq, *args, **kwargs)
         information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         
         draftModelPredictions = draftInput[0]
         # print(f"Draft Model Predictions Shape : {draftModelPredictions.shape}")
@@ -184,6 +181,7 @@ class SpeculativeDecoder(Decoder):
         # Now we call the larger model to get the outputs.
         modelOutputPredictions = self.model.infer(torch.cat((inputSeq, draftModelPredictions.unsqueeze(0)), dim = -1), lastK = self.k + 1)
         information.max_util = max(information.max_util, torch.cuda.utilization())
+        information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         # print(f"Model Output Predictions Shape : {modelOutputPredictions.shape}")
 
         for i in range(self.k) :
