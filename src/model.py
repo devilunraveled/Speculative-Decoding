@@ -8,6 +8,7 @@ class HuggingFaceModelWrapper(torch.nn.Module):
         self.model = AutoModelForCausalLM.from_pretrained(model)
         self.tokenizer = AutoTokenizer.from_pretrained(model)
         self.model.eval()
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 	
     def infer(self, inputSeq, lastK = 1):
         """

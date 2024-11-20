@@ -94,7 +94,7 @@ class BeamSearchDecoder(Decoder):
                                             output_logits = True,
                                             output_scores = True,
                                             return_dict_in_generate = True,
-                                            **kwargs)
+                                            )
         information.max_util = max(information.max_util, torch.cuda.utilization())
         information.memory_footprint = max(information.memory_footprint, torch.cuda.memory_allocated() / 1024 / 1024)
         logits = beamOutput.logits[0][beamOutput.beam_indices[0]][len(inputSeq[0]):]

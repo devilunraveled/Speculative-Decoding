@@ -29,8 +29,6 @@ def squadEvaluation(filePath, goldAnswersFile ):
         )
 
     # Assuming 'predictions' is a list of model outputs and 'references' is a list of gold answers
-    pprint.pprint(predictions[0])
-    pprint.pprint(goldAnswers[0])
     results = metric.compute(predictions=predictions, references=goldAnswers)
     assert results is not None
     results['run_time_per_sample'] = f"{totalTimeTaken:.2f} s"
@@ -40,7 +38,7 @@ def squadEvaluation(filePath, goldAnswersFile ):
         pass
     elif 'speculative' in filePath:
         # Compute total number of draft tokens
-        pass
+        print(data['information'][0])
 
     pprint.pprint(results)
 if __name__ == '__main__':

@@ -14,7 +14,7 @@ class Pipeline:
         self.decoder = decoder
         self.model = model
 
-    def __call__(self, prompt : str, maxLen: int) -> dict:
+    def __call__(self, prompt : str, maxLen: int, *args, **kwargs) -> dict:
         """
         Run inference on the given context and question.
         """
@@ -26,7 +26,7 @@ class Pipeline:
         generated, _, information = self.decoder.step(
             inputSeq=inputs.input_ids, 
             numTokens=maxLen,
-            k = 10,
+            *args, **kwargs
         )
         runTime = time.time() - startTime
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     decodingType = sys.argv[2]
 
     if datasetName == 'storygen' :
-        datapointLimit = 2500
+        datapointLimit = 1000
         with open("data/valid.wp_source", "r") as f:
             prompts = f.readlines()
 
@@ -110,21 +110,20 @@ if __name__ == '__main__':
             samplingScheme=getATokenFromTopK,
             k = 10
         )
-    else :
-        if decodingType == 'beam' :
+    elif decodingType == 'beam' :
             mainModelDecoder = BeamSearchDecoder(
                 model=mainModel,
-                beamSize=5,
+                beamSize=3,
                 samplingScheme=getATokenFromTopK,
-                config={}
-            )
-        else :
-            mainModelDecoder = SimpleDecoder(
-                model=mainModel, 
                 config={},
-                samplingScheme=getATokenFromTopK if decodingType == 'topk' else getMostProbableToken
             )
-    # Create the pipeline.
+    else :
+        mainModelDecoder = SimpleDecoder(
+            model=mainModel, 
+            config={},
+            samplingScheme=getATokenFromTopK if decodingType == 'topk' else getMostProbableToken
+        )
+    
     pipeline = Pipeline(decoder=mainModelDecoder, model=mainModel)
 
     # Prepare a list to store the results.
