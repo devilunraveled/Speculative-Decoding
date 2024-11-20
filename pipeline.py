@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
     # Define the two models.
     if decodingType == 'speculative' :
-        draftModel = HuggingFaceModelWrapper('openai-community/gpt2').to('cuda')
+        draftModel = HuggingFaceModelWrapper('openai-community/gpt2-large').to('cuda')
         draftModelDecoder = SimpleDecoder(
             model=draftModel, 
             config={},
@@ -174,7 +174,7 @@ if __name__ == '__main__':
         df = pd.DataFrame(results)
 
         # Save the DataFrame to a file.
-        df.to_pickle(f"{datasetName}_{decodingType}.pkl")
-        df.to_csv(f"{datasetName}_{decodingType}.csv", index=False)
+        df.to_pickle(f"{datasetName}_{decodingType}_large_as_draft.pkl")
+        df.to_csv(f"{datasetName}_{decodingType}_large_as_draft.csv", index=False)
         
         print("Inference completed and results saved.")
