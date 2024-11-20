@@ -1,5 +1,5 @@
 from transformers.utils import quantization_config
-from src.decoder import Decoder, SpeculativeDecoder, SimpleDecoder
+from src.decoder import Decoder, SpeculativeDecoder, SimpleDecoder, BeamSearchDecoder
 from src.model import HuggingFaceModelWrapper
 from src.utils import getATokenFromTopK, getMostProbableToken
 from datasets import load_dataset
@@ -50,9 +50,22 @@ if __name__ == '__main__':
     datasetName = sys.argv[1]
     decodingType = sys.argv[2]
 
-    dataset = load_dataset(datasetName, split="validation" if datasetName == 'squad' else 'test')
+    if datasetName == 'storygen' :
+        with open("data/valid.wp_source", "r") as f:
+            prompts = f.readlines()
 
-    dataset = dataset.select(range(5000 if datasetName == 'squad' else 3000))
+        dataset = [{"prompt": prompt} for prompt in prompts]
+
+        with open("data/valid.wp_target", "r") as f:
+            stories = f.readlines()
+
+        for i, story in enumerate(stories):
+            dataset[i]["story"] = story
+
+    else :
+        dataset = load_dataset(datasetName, split="validation" if datasetName == 'squad' else 'test')
+
+        dataset = dataset.select(range(5000 if datasetName == 'squad' else 3000))
 
     # Define the two models.
     if decodingType == 'speculative' :
@@ -95,11 +108,19 @@ if __name__ == '__main__':
             k = 10
         )
     else :
-        mainModelDecoder = SimpleDecoder(
-            model=mainModel, 
-            config={},
-            samplingScheme=getATokenFromTopK if decodingType == 'topk' else getMostProbableToken
-        )
+        if decodingType == 'beam' :
+            mainModelDecoder = BeamSearchDecoder(
+                model=mainModel,
+                beamSize=5,
+                samplingScheme=getATokenFromTopK,
+                config={}
+            )
+        else :
+            mainModelDecoder = SimpleDecoder(
+                model=mainModel, 
+                config={},
+                samplingScheme=getATokenFromTopK if decodingType == 'topk' else getMostProbableToken
+            )
     # Create the pipeline.
     pipeline = Pipeline(decoder=mainModelDecoder, model=mainModel)
 
@@ -131,6 +152,10 @@ if __name__ == '__main__':
                         'answers'    : data['answers']
                     }
                     maxLen=max((len(answer)) for answer in ground_truth['answers']['text'])
+                elif datasetName == 'storygen' :
+                    inputText = data["prompt"]
+                    ground_truth = data["story"]
+                    maxLen = 128
 
                 output = pipeline(prompt = inputText, maxLen=maxLen)
 
