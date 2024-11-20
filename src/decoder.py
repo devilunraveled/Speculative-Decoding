@@ -46,7 +46,6 @@ class SimpleDecoder(Decoder):
             inputSeq = torch.cat((inputSeq, index.unsqueeze(1)), dim = 1)
         
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
-        print(torch.cat(additionalTokenDistributions).shape)
         return torch.cat(additionalTokenIds), torch.cat(additionalTokenDistributions), information
     
     @override

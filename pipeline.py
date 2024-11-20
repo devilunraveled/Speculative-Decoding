@@ -14,17 +14,12 @@ class Pipeline:
         self.decoder = decoder
         self.model = model
 
-    def __call__(self, title: str, text: str, maxLen: int, datasetName : str) -> dict:
+    def __call__(self, prompt : str, maxLen: int) -> dict:
         """
         Run inference on the given context and question.
         """
-        if datasetName == 'squad' : 
-            inputText = f"Given the \nContext: {context}\n Answer this Question: {question}\n"
-        elif datasetName == 'billsum' :
-            inputText = f"Title: {title}\nText: {text}\nSummary:"
-        
         # Tokenize the input text.
-        inputs = self.model.tokenizer(inputText, return_tensors="pt", max_length=512, truncation=True).to('cuda')
+        inputs = self.model.tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True).to('cuda')
 
         # Generate the output text.
         startTime = time.time()
@@ -43,8 +38,7 @@ class Pipeline:
 
         # Return the output along with metadata.
         return {
-            "title": title,
-            "text": text,
+            "prompt" : prompt,
             "predicted_summary": outputText,
             "information": information,
             "run_time": runTime,
@@ -59,9 +53,6 @@ if __name__ == '__main__':
     dataset = load_dataset(datasetName, split="validation" if datasetName == 'squad' else 'test')
 
     dataset = dataset.select(range(5000 if datasetName == 'squad' else 3000))
-
-    context = dataset[0]['context']
-    question = dataset[0]['question']
 
     # Define the two models.
     if decodingType == 'speculative' :
@@ -91,7 +82,7 @@ if __name__ == '__main__':
         print(f"Loaded Draft Model Middle : {draftModel2.model.name_or_path}")
         
     
-    mainModel = HuggingFaceModelWrapper('openai-community/gpt2-xl').to('cuda')
+    mainModel = HuggingFaceModelWrapper('openai-community/gpt2-large').to('cuda')
     print(f"Loaded Main Model: {mainModel.model.name_or_path}")
 
     # Initialize the Speculative Decoder.
@@ -117,32 +108,36 @@ if __name__ == '__main__':
 
     # Iterate over the SQuAD dataset for inference.
     try :
-        with alive_bar(len(dataset), length=50, title="Billsum Inference") as bar:
+        with alive_bar(len(dataset), length=20, title="Billsum Inference") as bar:
             for i, data in enumerate(dataset):
+                maxLen = 100
+                inputText = "Hello"
+                ground_truth = "NO_VALID_ANSWER"
+
                 if datasetName == 'billsum' :
                     title = data["title"]
                     text = data["text"]
+                    inputText = f"Title: {title}\nText: {text}\nSummary:"
+                    
                     ground_truth = data["summary"]
-
-                    # Run inference.
-                    output = pipeline(title=title, text=text, maxLen=100, datasetName=datasetName)
+                    maxLen = 100
                 elif datasetName == 'squad' :
                     context = data["context"]
                     question = data["question"]
+                    inputText = f"Given the \nContext: {context}\n Answer this Question: {question}\n"
                     
                     ground_truth = {
                         'id'        : data['id'],
                         'answers'    : data['answers']
                     }
+                    maxLen=max((len(answer)) for answer in ground_truth['answers']['text'])
 
-                    # Run inference.
-                    output = pipeline(context=context, question=question, maxLen=max((len(answer)) for answer in ground_truth['answers']['text']), datasetName = datasetName)
+                output = pipeline(prompt = inputText, maxLen=maxLen)
 
 
                 # Add ground truth for evaluation later.
                 output["ground_truth"] = ground_truth
 
-                print(output["predicted_summary"])
                 # Append the result.
                 results.append(output)
                 

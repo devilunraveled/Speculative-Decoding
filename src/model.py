@@ -5,7 +5,7 @@ from .config import HF_MODEL_CACHE_DIR
 class HuggingFaceModelWrapper(torch.nn.Module):
     def __init__(self, model):
         super().__init__()
-        self.model = AutoModelForCausalLM.from_pretrained(model, cache_dir = HF_MODEL_CACHE_DIR)
+        self.model = AutoModelForCausalLM.from_pretrained(model)
         self.tokenizer = AutoTokenizer.from_pretrained(model)
         self.model.eval()
 	
