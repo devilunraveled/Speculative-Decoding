@@ -82,7 +82,7 @@ if __name__ == '__main__':
         print(f"Loaded Draft Model Middle : {draftModel2.model.name_or_path}")
         
     
-    mainModel = HuggingFaceModelWrapper('openai-community/gpt2-large').to('cuda')
+    mainModel = HuggingFaceModelWrapper('openai-community/gpt2-xl').to('cuda')
     print(f"Loaded Main Model: {mainModel.model.name_or_path}")
 
     # Initialize the Speculative Decoder.

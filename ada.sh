@@ -38,4 +38,4 @@ echo "Virtual environment activated: $(which python)"
 
 echo "Running on GPUs: $CUDA_VISIBLE_DEVICES"
 ## Running the training.
-python pipeline.py topk
+python pipeline.py bllsum speculative
