@@ -12,7 +12,20 @@ class Information :
     running_time : float
     memory_footprint : float
     max_util : float
-    subDecoder_info : Any
+    subDecoder_info : Any = 0
+
+    def __add__(self, other):
+        return Information(
+            accept_direct = self.accept_direct + other.accept_direct,
+            reject = self.reject + other.reject,
+            accept_indirect = self.accept_indirect + other.accept_indirect,
+            drafted = self.drafted + other.drafted,
+            total_generated = self.total_generated + other.total_generated,
+            running_time = self.running_time + other.running_time,
+            memory_footprint = self.memory_footprint + other.memory_footprint,
+            max_util = self.max_util + other.max_util,
+            subDecoder_info = self.subDecoder_info + other.subDecoder_info
+        )
 
 def getMostProbableToken(distribution: torch.Tensor):
     """

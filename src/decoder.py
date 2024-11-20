@@ -116,12 +116,13 @@ class BeamSearchDecoder(Decoder):
         return self.sampler(distribution, k = self.beamSize, *args, **kwargs)
 
 class SpeculativeDecoder(Decoder):
-    def __init__(self, model, k : int, draftModelDecoder, samplingScheme : Optional[Callable] = None, **kwargs):
+    def __init__(self, model, gamma : int, draftModelDecoder, samplingScheme : Optional[Callable] = None, **kwargs):
         super().__init__()
         self.model = model
-        self.k = k
+        self.k = gamma
         self.draftModelDecoder = draftModelDecoder
-        if samplingScheme is None : 
+        if samplingScheme is None :
+            print("Using default sampling scheme: greedy")
             samplingScheme = getMostProbableToken
         
         self.samplingKwargs = kwargs
@@ -135,7 +136,7 @@ class SpeculativeDecoder(Decoder):
                            the value is 5.
         """
 
-        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0, None)
+        information = Information(0, 0, 0, 0, 0, 0.0, 0.0, 0.0)
         
         additionalTokens = []
         
@@ -151,6 +152,9 @@ class SpeculativeDecoder(Decoder):
             return torch.tensor([]), torch.tensor([]), information
     
         additionalTokenIds, tokenProbabiltiyDistributions = zip(*additionalTokens)
+
+        # print(f'Decoded from {self.model.model.name_or_path} : {additionalTokenIds}')
+        # print(f'Probabilities : {tokenProbabiltiyDistributions}')
 
         return torch.stack(additionalTokenIds), torch.stack(tokenProbabiltiyDistributions), information
 
@@ -192,7 +196,7 @@ class SpeculativeDecoder(Decoder):
             draftModelToken  = draftModelPredictions[i]
             if verbose :
                 print(f"Draft Model Token : `{self.model.tokenizer.decode(draftModelToken, skip_special_tokens = True)}`")
-
+            
             draftModelProbability  = draftModelDistribution[draftModelToken]
             modelOutputProbability  = modelOutputDistribution[draftModelToken]
             
@@ -243,4 +247,4 @@ class SpeculativeDecoder(Decoder):
         additionalTokenIds, additionalTokenDistributions = zip(*additionalTokens)
         information.total_generated += len(additionalTokenIds)
 
-        return torch.stack(additionalTokenIds), torch.cat(additionalTokenDistributions), information
+        return torch.stack(additionalTokenIds), torch.stack(additionalTokenDistributions), information
