@@ -29,6 +29,8 @@ def squadEvaluation(filePath, goldAnswersFile ):
         )
 
     # Assuming 'predictions' is a list of model outputs and 'references' is a list of gold answers
+    pprint.pprint(predictions[0])
+    pprint.pprint(goldAnswers[0])
     results = metric.compute(predictions=predictions, references=goldAnswers)
     assert results is not None
     results['run_time_per_sample'] = f"{totalTimeTaken:.2f} s"
@@ -43,6 +45,8 @@ def squadEvaluation(filePath, goldAnswersFile ):
     pprint.pprint(results)
 if __name__ == '__main__':
     import sys
-    filePath = sys.argv[1]
-    goldAnswersFile = sys.argv[2]
+    fileName = sys.argv[1]
+    datasetName = fileName.split('_')[0]
+    filePath = f"./results/{datasetName}/{fileName}.csv"
+    goldAnswersFile = f"./results/{datasetName}/{datasetName}_gold.pkl"
     squadEvaluation(filePath, goldAnswersFile)

@@ -5,6 +5,7 @@
 #SBATCH --time=4-00:00:00
 #SBATCH --nodelist=gnode073
 #SBATCH --mail-type=END
+#SBATCH --output=billsum_speculative
 
 ## load the necessary modules
 module load u18/python/3.11.2

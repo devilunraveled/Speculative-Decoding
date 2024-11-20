@@ -51,21 +51,24 @@ if __name__ == '__main__':
     decodingType = sys.argv[2]
 
     if datasetName == 'storygen' :
+        datapointLimit = 2500
         with open("data/valid.wp_source", "r") as f:
             prompts = f.readlines()
 
         dataset = [{"prompt": prompt} for prompt in prompts]
-
+        
         with open("data/valid.wp_target", "r") as f:
             stories = f.readlines()
 
         for i, story in enumerate(stories):
             dataset[i]["story"] = story
 
+        dataset = dataset[:datapointLimit]
+
     else :
         dataset = load_dataset(datasetName, split="validation" if datasetName == 'squad' else 'test')
 
-        dataset = dataset.select(range(5000 if datasetName == 'squad' else 3000))
+        dataset = dataset.select(range(5000 if datasetName == 'squad' else 1000))
 
     # Define the two models.
     if decodingType == 'speculative' :
@@ -129,7 +132,7 @@ if __name__ == '__main__':
 
     # Iterate over the SQuAD dataset for inference.
     try :
-        with alive_bar(len(dataset), length=20, title="Billsum Inference") as bar:
+        with alive_bar(len(dataset), length=10, title=f"{datasetName}-{decodingType}", force_tty=True) as bar:
             for i, data in enumerate(dataset):
                 maxLen = 100
                 inputText = "Hello"
@@ -141,7 +144,7 @@ if __name__ == '__main__':
                     inputText = f"Title: {title}\nText: {text}\nSummary:"
                     
                     ground_truth = data["summary"]
-                    maxLen = 100
+                    maxLen = 80
                 elif datasetName == 'squad' :
                     context = data["context"]
                     question = data["question"]
@@ -155,7 +158,7 @@ if __name__ == '__main__':
                 elif datasetName == 'storygen' :
                     inputText = data["prompt"]
                     ground_truth = data["story"]
-                    maxLen = 128
+                    maxLen = 100
 
                 output = pipeline(prompt = inputText, maxLen=maxLen)
 
