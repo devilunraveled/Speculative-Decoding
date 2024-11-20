@@ -16,8 +16,10 @@ def squadEvaluation(filePath, goldAnswersFile ):
     
     metric = evaluate.load("squad")
     
-    modelResponses = data['predicted_answer'].tolist()
-
+    try :
+        modelResponses = data['predicted_answer'].tolist()
+    except KeyError:
+        modelResponses = data['predicted_summary'].tolist()
     predictions = []
 
     for i in range(len(modelResponses)):
@@ -38,7 +40,7 @@ def squadEvaluation(filePath, goldAnswersFile ):
         pass
     elif 'speculative' in filePath:
         # Compute total number of draft tokens
-        print(data['information'][0])
+        pass
 
     pprint.pprint(results)
 if __name__ == '__main__':

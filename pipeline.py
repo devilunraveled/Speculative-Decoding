@@ -39,7 +39,7 @@ class Pipeline:
         # Return the output along with metadata.
         return {
             "prompt" : prompt,
-            "predicted_summary": outputText,
+            "predicted_output": outputText,
             "information": information,
             "run_time": runTime,
             "memory_footprint": information.memory_footprint,
