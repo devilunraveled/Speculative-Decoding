@@ -16,6 +16,13 @@ def getInformationForSpeculativeDecoder(informationObjects, datasetName : str ):
     
     print(f"Average Length : {sum(info.total_generated for info in informationObjects) / len(informationObjects)}")
     
+    if totalDraftedTokens != 0 :
+        # Speculative Scheme Somewhere.
+        direcAcceptence = sum(info.accept_direct for info in informationObjects) / totalDraftedTokens
+        print(f"Direct Acceptence Rate of Model : {direcAcceptence*100:.2f}")
+        totalAccepted = draftAcceptedTokens / totalDraftedTokens
+        print(f"Total Acceptence Rate of Model : {totalAccepted*100:.2f}")
+
     try :
         timePerToken = totalTime / totalGenerated
     except ZeroDivisionError:
@@ -53,7 +60,7 @@ def getInformationForSpeculativeDecoder(informationObjects, datasetName : str ):
         'model_generated_tokens' : modelGenerated,
         'total_generated_tokens' : totalGenerated,
         'token_per_main_model_pass' : f"{token_per_main_model_pass:.4f}",
-        'peak_vram' : f"{peakVRAM:.2f} MB"
+        'peak_vram' : f"{peakVRAM:.2f} MB",
     }
 
 
